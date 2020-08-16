@@ -48,10 +48,7 @@ func tokenize(contents string, tokens chan string) {
 	tokens <- ""
 }
 
-func data(value *bEncodeValue, token string, tokens chan string, infoTokens chan string, inInfo bool) {
-	if inInfo {
-		infoTokens <- token
-	}
+func data(value *bEncodeValue, token string, tokens chan string) {
 	switch token {
 	case "i":
 		token = <-tokens
@@ -66,27 +63,20 @@ func data(value *bEncodeValue, token string, tokens chan string, infoTokens chan
 		token = <-tokens
 		for ; token != "e"; token = <-tokens {
 			val := bEncodeValue{}
-			data(&val, token, tokens, infoTokens, inInfo)
+			data(&val, token, tokens)
 			newList := append(*value.list, val)
 			value.list = &newList
 		}
 	case "d":
-		startInfo := false
 		value.dict = &bEncodeDict{}
 		token = <-tokens
 		for ; token != "e"; token = <-tokens {
 			key := bEncodeValue{}
-			data(&key, token, tokens, infoTokens, inInfo)
-			if *key.str == "info" {
-				startInfo = true
-			}
+			data(&key, token, tokens)
 			token = <-tokens
 			val := bEncodeValue{}
-			data(&val, token, tokens, infoTokens, inInfo || startInfo)
+			data(&val, token, tokens)
 			value.dict.items = append(value.dict.items, bEncodeKeyValue{key.str, &val})
-		}
-		if startInfo {
-			infoTokens <- ""
 		}
 	}
 }

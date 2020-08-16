@@ -28,4 +28,8 @@ func main() {
 		os.Exit(1)
 	}
 	fmt.Println(tf)
+	if err := DownloadTorrent(tf); err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 }

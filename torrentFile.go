@@ -1,16 +1,17 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha1"
 	"errors"
 	"fmt"
-	"io"
 	"io/ioutil"
 )
 
 // TorrentFile represents the torrent's general info.
 type TorrentFile struct {
 	Announce    string
+	PeerID      string
 	pieces      string
 	InfoHash    [20]byte
 	PieceHashes [][20]byte
@@ -36,7 +37,7 @@ func (i *TorrentFile) splitPieceHashes(pieces string) error {
 	return nil
 }
 
-func fillTorrentFile(tf *TorrentFile, bEncodeData *bEncodeValue, infoHash chan [20]byte) error {
+func fillTorrentFile(tf *TorrentFile, bEncodeData *bEncodeValue) error {
 	if bEncodeData.dict == nil {
 		return errors.New("invalid torrent file")
 	}
@@ -53,6 +54,8 @@ func fillTorrentFile(tf *TorrentFile, bEncodeData *bEncodeValue, infoHash chan [
 	if info.dict == nil {
 		return errors.New("invalid torrent file ('info' field is not a dict)")
 	}
+	tf.InfoHash = infoHash(info)
+
 	pieces, err := getDictValue(info.dict, "pieces")
 	if err != nil {
 		return err
@@ -88,39 +91,33 @@ func fillTorrentFile(tf *TorrentFile, bEncodeData *bEncodeValue, infoHash chan [
 	}
 	tf.Name = *name.str
 
-	tf.InfoHash = <-infoHash
-
 	return nil
 }
 
-func hash(infoTokens chan string, infoHash chan [20]byte) {
-	h := sha1.New()
-	for token := <-infoTokens; token != ""; token = <-infoTokens {
-		io.WriteString(h, token)
+func infoHash(infoValue *bEncodeValue) [20]byte {
+	var b bytes.Buffer
+	err := encode(infoValue, &b)
+	if err != nil {
+		return [20]byte{}
 	}
-	var hashResult [20]byte
-	copy(hashResult[:], h.Sum(nil)[:20])
-	infoHash <- hashResult
+	return sha1.Sum(b.Bytes())
 }
 
 // ReadTorrent reads a file into a data structure.
 func ReadTorrent(path string) (*TorrentFile, error) {
-	tf := TorrentFile{}
+	tf := TorrentFile{PeerID: "-MBT-f04240db1b162cf"}
 	contents, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
 	tokens := make(chan string)
-	infoTokens := make(chan string)
-	infoHash := make(chan [20]byte)
 	go tokenize(string(contents), tokens)
-	go hash(infoTokens, infoHash)
 	bEncodeData := bEncodeValue{}
 	token := <-tokens
-	data(&bEncodeData, token, tokens, infoTokens, false)
+	data(&bEncodeData, token, tokens)
 
-	if err := fillTorrentFile(&tf, &bEncodeData, infoHash); err != nil {
+	if err := fillTorrentFile(&tf, &bEncodeData); err != nil {
 		return nil, err
 	}
 
